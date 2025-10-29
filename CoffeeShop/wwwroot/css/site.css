@@ -1,0 +1,68 @@
+:root {
+    --primary-color: #8B4513;
+    --secondary-color: #D2691E;
+    --accent-color: #A0522D;
+    --light-color: #F5F5DC;
+    --dark-color: #3E2723;
+}
+
+body {
+    background-color: var(--light-color);
+    color: var(--dark-color);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.navbar {
+    background-color: var(--primary-color) !important;
+}
+
+.navbar-brand {
+    font-weight: bold;
+    color: var(--light-color) !important;
+}
+
+.btn-primary {
+    background-color: var(--secondary-color);
+    border-color: var(--accent-color);
+}
+
+.btn-primary:hover {
+    background-color: var(--accent-color);
+    border-color: var(--primary-color);
+}
+
+.coffee-card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    transition: transform 0.3s ease;
+    margin-bottom: 20px;
+}
+
+.coffee-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.coffee-image {
+    height: 200px;
+    object-fit: cover;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.price {
+    color: var(--primary-color);
+    font-weight: bold;
+    font-size: 1.2em;
+}
+
+.origin-badge {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.footer {
+    background-color: var(--dark-color);
+    color: var(--light-color);
+    margin-top: 50px;
+}

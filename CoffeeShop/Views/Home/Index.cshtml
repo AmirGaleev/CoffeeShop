@@ -1,0 +1,41 @@
+﻿@{
+    ViewData["Title"] = "Главная";
+}
+
+<div class="text-center">
+    <h1 class="display-4">Добро пожаловать в @ViewData["StoreName"]!</h1>
+    <p class="lead">Откройте для себя мир премиального кофе</p>
+    
+    <div class="row mt-5">
+        <div class="col-md-4">
+            <div class="card coffee-card">
+                <img src="/images/coffee-beans.jpg" class="card-img-top" alt="Зерновой кофе">
+                <div class="card-body">
+                    <h5 class="card-title">Зерновой кофе</h5>
+                    <p class="card-text">Свежеобжаренные кофейные зерна из лучших регионов мира.</p>
+                    <a href="/catalog/category/Зерновой" class="btn btn-primary">Смотреть каталог</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card coffee-card">
+                <img src="/images/ground-coffee.jpg" class="card-img-top" alt="Молотый кофе">
+                <div class="card-body">
+                    <h5 class="card-title">Молотый кофе</h5>
+                    <p class="card-text">Идеально помолотый кофе для различных способов заваривания.</p>
+                    <a href="/catalog/category/Молотый" class="btn btn-primary">Смотреть каталог</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card coffee-card">
+                <img src="/images/coffee-accessories.jpg" class="card-img-top" alt="Аксессуары">
+                <div class="card-body">
+                    <h5 class="card-title">Аксессуары</h5>
+                    <p class="card-text">Все необходимое для идеального кофе: от турок до кофемашин.</p>
+                    <a href="/catalog" class="btn btn-primary">Смотреть каталог</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

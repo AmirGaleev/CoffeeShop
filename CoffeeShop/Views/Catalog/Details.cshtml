@@ -1,0 +1,34 @@
+@model CoffeeProduct
+@{
+    ViewData["Title"] = Model.Name;
+}
+
+<div class="row">
+    <div class="col-md-6">
+        <img src="@Model.ImageUrl" class="img-fluid rounded" alt="@Model.Name"
+             onerror="this.src='/images/coffee-placeholder.jpg'">
+    </div>
+    <div class="col-md-6">
+        <h1>@Model.Name</h1>
+        <p class="lead">@Model.Description</p>
+        
+        <div class="mb-3">
+            <span class="badge bg-primary">@Model.Category</span>
+            <span class="badge bg-secondary">@Model.Origin</span>
+            <span class="badge bg-info">@Model.RoastLevel обжарка</span>
+        </div>
+        
+        <div class="mb-3">
+            <h3 class="text-primary">@Model.Price.ToString("C")</h3>
+            <p class="text-muted">В наличии: @Model.Stock шт.</p>
+        </div>
+        
+        <div class="d-grid gap-2 d-md-flex">
+            <button class="btn btn-primary btn-lg" 
+                    onclick="addToCart(@Model.Id, '@Model.Name')">
+                <i class="fas fa-cart-plus"></i> Добавить в корзину
+            </button>
+            <a href="/catalog" class="btn btn-outline-secondary btn-lg">Назад к каталогу</a>
+        </div>
+    </div>
+</div>
