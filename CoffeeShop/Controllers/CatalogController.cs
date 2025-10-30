@@ -20,7 +20,6 @@ namespace CoffeeShop.Controllers
             return View(products);
         }
 
-        // Пользовательский маршрут: /catalog/category/{categoryName}
         public IActionResult Category(string categoryName)
         {
             var products = _coffeeService.GetProductsByCategory(categoryName);
@@ -34,7 +33,6 @@ namespace CoffeeShop.Controllers
             return View("Index", products);
         }
 
-        // Пользовательский маршрут: /coffee/{id}/{name?}
         public IActionResult Details(int id)
         {
             var product = _coffeeService.GetProductById(id);
@@ -45,7 +43,6 @@ namespace CoffeeShop.Controllers
             return View(product);
         }
 
-        // API метод возвращающий JSON (Занятие 10)
         [Route("/catalog/api/all")]
         public IActionResult ApiAll()
         {
