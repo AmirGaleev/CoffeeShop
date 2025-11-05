@@ -1,7 +1,7 @@
 ﻿// Функция для асинхронного добавления в корзину
 async function addToCart(productId, productName) {
     try {
-        const response = await fetch('/Cart/AddToCart', {
+        const response = await fetch('/cart/add', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -13,9 +13,8 @@ async function addToCart(productId, productName) {
         });
 
         if (response.ok) {
-            const result = await response.json();
-            showNotification(result.message, 'success');
-            updateCartCounter(result.cartCount);
+            showNotification(`Товар "${productName}" добавлен в корзину!`, 'success');
+            updateCartCounter();
         } else {
             showNotification('Ошибка при добавлении товара в корзину', 'error');
         }
@@ -55,18 +54,11 @@ function createNotificationContainer() {
 }
 
 // Обновление счетчика корзины
-async function updateCartCounter() {
-    try {
-        const response = await fetch('/Cart/GetCartInfo');
-        if (response.ok) {
-            const cartInfo = await response.json();
-            const counter = document.getElementById('cart-counter');
-            if (counter) {
-                counter.textContent = cartInfo.count;
-            }
-        }
-    } catch (error) {
-        console.error('Error fetching cart info:', error);
+function updateCartCounter() {
+    const counter = document.getElementById('cart-counter');
+    if (counter) {
+        const currentCount = parseInt(counter.textContent) || 0;
+        counter.textContent = currentCount + 1;
     }
 }
 
@@ -89,6 +81,5 @@ async function loadCategories() {
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
-    updateCartCounter();
     loadCategories();
 });

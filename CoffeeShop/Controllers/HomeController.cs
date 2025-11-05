@@ -1,32 +1,21 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using CoffeeShop.Models;
-using CoffeeShop.Services;
 
 namespace CoffeeShop.Controllers
 {
     public class HomeController : Controller
     {
         private readonly StoreSettings _storeSettings;
-        private readonly IVisitCounterService _visitCounter;
 
-        public HomeController(
-            IOptions<StoreSettings> storeSettings,
-            IVisitCounterService visitCounter)
+        public HomeController(IOptions<StoreSettings> storeSettings)
         {
             _storeSettings = storeSettings.Value;
-            _visitCounter = visitCounter;
         }
 
         public IActionResult Index()
         {
-            // Увеличиваем счетчик посещений
-            _visitCounter.IncrementVisitCount();
-            var visitCount = _visitCounter.GetVisitCount();
-
             ViewData["StoreName"] = _storeSettings.StoreName;
-            ViewData["VisitCount"] = visitCount;
-
             return View();
         }
 
@@ -40,6 +29,7 @@ namespace CoffeeShop.Controllers
             return View();
         }
 
+        // Пример возврата разных типов ответов (Занятие 10)
         public IActionResult StoreInfo()
         {
             var storeInfo = new
