@@ -1,5 +1,5 @@
-using CoffeeShop.Models;
 using CoffeeShop.Services;
+using CoffeeShop.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -7,7 +7,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
 
 // Register services for dependency injection
-builder.Services.AddSingleton<ICoffeeService, CoffeeService>();
+builder.Services.AddScoped<IDatabaseService, DatabaseService>();
+builder.Services.AddScoped<ICoffeeService, CoffeeService>();
+
 builder.Services.Configure<StoreSettings>(
     builder.Configuration.GetSection("StoreSettings"));
 
@@ -25,7 +27,7 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthorization();
 
-// Custom routes (Занятие 4)
+// Custom routes
 app.MapControllerRoute(
     name: "catalogCategory",
     pattern: "catalog/category/{categoryName}",

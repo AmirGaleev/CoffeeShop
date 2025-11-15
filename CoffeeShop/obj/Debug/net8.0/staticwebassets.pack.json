@@ -5,6 +5,14 @@
       "PackagePath": "staticwebassets\\CoffeeShop.bundle.scp.css"
     },
     {
+      "Id": "D:\\UNIVER\\back\\CoffeeShop\\CoffeeShop\\wwwroot\\CoffeeShop.db",
+      "PackagePath": "staticwebassets\\CoffeeShop.db"
+    },
+    {
+      "Id": "D:\\UNIVER\\back\\CoffeeShop\\CoffeeShop\\wwwroot\\CoffeeShop.sqbpro",
+      "PackagePath": "staticwebassets\\CoffeeShop.sqbpro"
+    },
+    {
       "Id": "D:\\UNIVER\\back\\CoffeeShop\\CoffeeShop\\wwwroot\\css\\site.css",
       "PackagePath": "staticwebassets\\css\\site.css"
     },
