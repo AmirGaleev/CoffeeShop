@@ -1,0 +1,1382 @@
+﻿File: C:\Users\MrAge\Desktop\CoffeeShop\Program.cs
+using CoffeeShop.Services;
+using CoffeeShop.Data;
+using CoffeeShop.Models;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddControllersWithViews();
+
+// Настройка сессий
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.Cookie.Name = "CoffeeShop.Session";
+});
+
+// Добавить IHttpContextAccessor
+builder.Services.AddHttpContextAccessor();
+
+// Register services for dependency injection
+builder.Services.AddScoped<IDatabaseService, DatabaseService>();
+builder.Services.AddScoped<ICoffeeService, CoffeeService>();
+builder.Services.AddScoped<ICartService, CartService>();
+builder.Services.AddScoped<IVisitCounterService, VisitCounterService>();
+// Register services for dependency injection
+builder.Services.AddScoped<IDatabaseService, DatabaseService>();
+builder.Services.AddScoped<ICoffeeService, CoffeeService>();
+builder.Services.AddScoped<ICartService, CartService>();
+builder.Services.AddScoped<IVisitCounterService, VisitCounterService>();
+builder.Services.Configure<StoreSettings>(
+    builder.Configuration.GetSection("StoreSettings"));
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Home/Error");
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+app.UseRouting();
+
+// Подключение сессий
+app.UseSession();
+
+app.UseAuthorization();
+
+// Custom routes
+app.MapControllerRoute(
+    name: "catalogCategory",
+    pattern: "catalog/category/{categoryName}",
+    defaults: new { controller = "Catalog", action = "Category" });
+
+app.MapControllerRoute(
+    name: "coffeeDetails",
+    pattern: "coffee/{id}/{name?}",
+    defaults: new { controller = "Catalog", action = "Details" });
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+
+app.Run();
+File: C:\Users\MrAge\Desktop\CoffeeShop\Controllers\CartController.cs
+using Microsoft.AspNetCore.Mvc;
+using CoffeeShop.Services;
+using CoffeeShop.Models;
+using Microsoft.Extensions.Logging;
+
+namespace CoffeeShop.Controllers
+{
+    public class CartController : Controller
+    {
+        private readonly ICartService _cartService;
+        private readonly ICoffeeService _coffeeService;
+        private readonly ILogger<CartController> _logger;
+
+        public CartController(
+            ICartService cartService, 
+            ICoffeeService coffeeService,
+            ILogger<CartController> logger)
+        {
+            _cartService = cartService;
+            _coffeeService = coffeeService;
+            _logger = logger;
+        }
+
+        [HttpPost]
+        public IActionResult AddToCart([FromBody] AddToCartRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Получен запрос на добавление в корзину: ProductId={ProductId}, Quantity={Quantity}", 
+                    request.ProductId, request.Quantity);
+
+                var product = _coffeeService.GetProductById(request.ProductId);
+                if (product == null)
+                {
+                    _logger.LogWarning("Товар с ID {ProductId} не найден", request.ProductId);
+                    return Json(new { success = false, message = "Товар не найден" });
+                }
+
+                _logger.LogInformation("Найден товар: {ProductName}", product.Name);
+
+                _cartService.AddToCart(product, request.Quantity);
+                var cartCount = _cartService.GetCartItemsCount();
+                var cartTotal = _cartService.GetCartTotal();
+                
+                _logger.LogInformation("Товар успешно добавлен в корзину. Корзина: {Count} товаров, сумма: {Total}", 
+                    cartCount, cartTotal);
+
+                return Json(new { 
+                    success = true, 
+                    message = $"{product.Name} добавлен в корзину",
+                    cartCount = cartCount,
+                    cartTotal = cartTotal
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Критическая ошибка при добавлении в корзину для товара {ProductId}", request.ProductId);
+                return Json(new { 
+                    success = false, 
+                    message = "Произошла ошибка при добавлении товара в корзину" 
+                });
+            }
+        }
+
+        [HttpPost]
+        public IActionResult RemoveFromCart([FromBody] RemoveFromCartRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Удаление товара {ProductId} из корзины", request.ProductId);
+                _cartService.RemoveFromCart(request.ProductId);
+                var cartCount = _cartService.GetCartItemsCount();
+                var cartTotal = _cartService.GetCartTotal();
+                
+                return Json(new { 
+                    success = true,
+                    cartCount = cartCount,
+                    cartTotal = cartTotal
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при удалении товара {ProductId} из корзины", request.ProductId);
+                return Json(new { success = false, message = "Ошибка при удалении товара" });
+            }
+        }
+
+        public IActionResult Index()
+        {
+            try
+            {
+                var cartItems = _cartService.GetCartItems().Values;
+                ViewBag.CartTotal = _cartService.GetCartTotal();
+                _logger.LogInformation("Отображение корзины с {Count} товарами", cartItems.Count);
+                return View(cartItems);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при загрузке страницы корзины");
+                ViewBag.CartTotal = 0;
+                return View(new List<CartItem>());
+            }
+        }
+
+        [HttpPost]
+        public IActionResult ClearCart()
+        {
+            try
+            {
+                _cartService.ClearCart();
+                _logger.LogInformation("Корзина очищена");
+                return RedirectToAction("Index");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при очистке корзины");
+                return RedirectToAction("Index");
+            }
+        }
+
+        [HttpGet]
+        public IActionResult GetCartInfo()
+        {
+            try
+            {
+                var cartInfo = new
+                {
+                    Count = _cartService.GetCartItemsCount(),
+                    Total = _cartService.GetCartTotal()
+                };
+                
+                _logger.LogDebug("Запрос информации о корзине: {Count} товаров, {Total} руб.", 
+                    cartInfo.Count, cartInfo.Total);
+                    
+                return Json(cartInfo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении информации о корзине");
+                return Json(new { Count = 0, Total = 0 });
+            }
+        }
+    }
+
+    public class AddToCartRequest
+    {
+        public int ProductId { get; set; }
+        public int Quantity { get; set; } = 1;
+    }
+
+    public class RemoveFromCartRequest
+    {
+        public int ProductId { get; set; }
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Controllers\CatalogController.cs
+using Microsoft.AspNetCore.Mvc;
+using CoffeeShop.Services;
+using CoffeeShop.Models;
+
+namespace CoffeeShop.Controllers
+{
+    public class CatalogController : Controller
+    {
+        private readonly ICoffeeService _coffeeService;
+
+        public CatalogController(ICoffeeService coffeeService)
+        {
+            _coffeeService = coffeeService;
+        }
+
+        public IActionResult Index()
+        {
+            var products = _coffeeService.GetAllProducts();
+            ViewBag.Categories = _coffeeService.GetCategories();
+            return View(products);
+        }
+
+        public IActionResult Category(string categoryName)
+        {
+            var products = _coffeeService.GetProductsByCategory(categoryName);
+            if (!products.Any())
+            {
+                return NotFound();
+            }
+            
+            ViewData["Category"] = categoryName;
+            ViewBag.Categories = _coffeeService.GetCategories();
+            return View("Index", products);
+        }
+
+        public IActionResult Details(int id)
+        {
+            var product = _coffeeService.GetProductById(id);
+            if (product == null)
+            {
+                return NotFound();
+            }
+            return View(product);
+        }
+
+        [Route("/catalog/api/all")]
+        public IActionResult ApiAll()
+        {
+            var products = _coffeeService.GetAllProducts();
+            return Json(products);
+        }
+
+        [Route("/catalog/api/categories")]
+        public IActionResult ApiCategories()
+        {
+            var categories = _coffeeService.GetCategories();
+            return Json(categories);
+        }
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Controllers\DiagnosticController.cs
+using Microsoft.AspNetCore.Mvc;
+using CoffeeShop.Services;
+using Microsoft.Extensions.Logging;
+
+namespace CoffeeShop.Controllers
+{
+    public class DiagnosticController : Controller
+    {
+        private readonly ICartService _cartService;
+        private readonly ICoffeeService _coffeeService;
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly ILogger<DiagnosticController> _logger;
+
+        public DiagnosticController(
+            ICartService cartService,
+            ICoffeeService coffeeService,
+            IHttpContextAccessor httpContextAccessor,
+            ILogger<DiagnosticController> logger)
+        {
+            _cartService = cartService;
+            _coffeeService = coffeeService;
+            _httpContextAccessor = httpContextAccessor;
+            _logger = logger;
+        }
+
+        public IActionResult Index()
+        {
+            var diagnostics = new
+            {
+                SessionId = _httpContextAccessor.HttpContext?.Session?.Id ?? "No session",
+                SessionKeys = _httpContextAccessor.HttpContext?.Session?.Keys ?? new List<string>(),
+                ProductsCount = _coffeeService.GetAllProducts().Count(),
+                CartItemsCount = _cartService.GetCartItemsCount(),
+                CartTotal = _cartService.GetCartTotal(),
+                HasHttpContext = _httpContextAccessor.HttpContext != null,
+                HasSession = _httpContextAccessor.HttpContext?.Session != null
+            };
+
+            _logger.LogInformation("Диагностика: {@Diagnostics}", diagnostics);
+
+            return Json(diagnostics);
+        }
+
+        [HttpPost]
+        public IActionResult TestAddToCart(int productId = 1)
+        {
+            try
+            {
+                var product = _coffeeService.GetProductById(productId);
+                if (product == null)
+                {
+                    return Json(new { success = false, message = "Тестовый товар не найден" });
+                }
+
+                _cartService.AddToCart(product, 1);
+                var cartCount = _cartService.GetCartItemsCount();
+
+                return Json(new { 
+                    success = true, 
+                    message = $"Тестовый товар {product.Name} добавлен в корзину",
+                    cartCount = cartCount
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Тест добавления в корзину провалился");
+                return Json(new { 
+                    success = false, 
+                    message = $"Тест провален: {ex.Message}",
+                    stackTrace = ex.StackTrace
+                });
+            }
+        }
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Controllers\HomeController.cs
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using CoffeeShop.Models;
+using CoffeeShop.Services;
+
+namespace CoffeeShop.Controllers
+{
+    public class HomeController : Controller
+    {
+        private readonly StoreSettings _storeSettings;
+        private readonly IVisitCounterService _visitCounter;
+
+        public HomeController(
+            IOptions<StoreSettings> storeSettings,
+            IVisitCounterService visitCounter)
+        {
+            _storeSettings = storeSettings.Value;
+            _visitCounter = visitCounter;
+        }
+
+        public IActionResult Index()
+        {
+            // Увеличиваем счетчик посещений
+            _visitCounter.IncrementVisitCount();
+            var visitCount = _visitCounter.GetVisitCount();
+
+            ViewData["StoreName"] = _storeSettings.StoreName;
+            ViewData["VisitCount"] = visitCount;
+
+            return View();
+        }
+
+        public IActionResult Privacy()
+        {
+            return View();
+        }
+
+        public IActionResult About()
+        {
+            return View();
+        }
+
+        public IActionResult StoreInfo()
+        {
+            var storeInfo = new
+            {
+                Name = _storeSettings.StoreName,
+                Currency = _storeSettings.Currency,
+                PageSize = _storeSettings.PageSize
+            };
+            return Json(storeInfo);
+        }
+
+        public IActionResult DownloadCatalog()
+        {
+            var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "documents", "catalog.pdf");
+            if (!System.IO.File.Exists(filePath))
+            {
+                return NotFound();
+            }
+            return PhysicalFile(filePath, "application/pdf", "CoffeeCatalog.pdf");
+        }
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Models\CartItem.cs
+namespace CoffeeShop.Models
+{
+    public class CartItem
+    {
+        public int ProductId { get; set; }
+        public string ProductName { get; set; } = string.Empty;
+        public decimal Price { get; set; }
+        public int Quantity { get; set; }
+        public string ImageUrl { get; set; } = string.Empty;
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Models\CoffeeProduct.cs
+using System.ComponentModel.DataAnnotations;
+
+namespace CoffeeShop.Models
+{
+    public class CoffeeProduct
+    {
+        public int Id { get; set; }
+        
+        [Required]
+        [StringLength(100)]
+        public string Name { get; set; } = string.Empty;
+        
+        [StringLength(500)]
+        public string Description { get; set; } = string.Empty;
+        
+        [Range(0, 10000)]
+        public decimal Price { get; set; }
+        
+        [Required]
+        [StringLength(50)]
+        public string Category { get; set; } = string.Empty;
+        
+        public string ImageUrl { get; set; } = string.Empty;
+        
+        [StringLength(50)]
+        public string Origin { get; set; } = string.Empty;
+        
+        [StringLength(50)]
+        public string RoastLevel { get; set; } = string.Empty;
+        
+        [Range(0, 1000)]
+        public int Stock { get; set; }
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Models\ErrorViewModel.cs
+namespace CoffeeShop.Models;
+
+public class ErrorViewModel
+{
+    public string? RequestId { get; set; }
+
+    public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+}
+
+File: C:\Users\MrAge\Desktop\CoffeeShop\Models\StoreSettings.cs
+namespace CoffeeShop.Models
+{
+    public class StoreSettings
+    {
+        public string StoreName { get; set; } = string.Empty;
+        public string Currency { get; set; } = string.Empty;
+        public int PageSize { get; set; } = 12;
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Services\ICartService.cs
+using CoffeeShop.Models;
+
+namespace CoffeeShop.Services
+{
+    public interface ICartService
+    {
+        void AddToCart(CoffeeProduct product, int quantity = 1);
+        void RemoveFromCart(int productId);
+        void ClearCart();
+        Dictionary<int, CartItem> GetCartItems();
+        int GetCartItemsCount();
+        decimal GetCartTotal();
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Services\ICoffeeService.cs
+using CoffeeShop.Models;
+
+namespace CoffeeShop.Services
+{
+    public interface ICoffeeService
+    {
+        IEnumerable<CoffeeProduct> GetAllProducts();
+        CoffeeProduct? GetProductById(int id);
+        IEnumerable<CoffeeProduct> GetProductsByCategory(string category);
+        IEnumerable<string> GetCategories();
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Services\IDatabaseService.cs
+using CoffeeShop.Models;
+
+namespace CoffeeShop.Services
+{
+    public interface IDatabaseService
+    {
+        IEnumerable<CoffeeProduct> GetAllProducts();
+        CoffeeProduct? GetProductById(int id);
+        IEnumerable<CoffeeProduct> GetProductsByCategory(string category);
+        IEnumerable<string> GetCategories();
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Services\IVisitCounterService.cs
+namespace CoffeeShop.Services
+{
+    public interface IVisitCounterService
+    {
+        int GetVisitCount();
+        void IncrementVisitCount();
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Services\VisitCounterService.cs
+using Microsoft.AspNetCore.Http;
+
+namespace CoffeeShop.Services
+{
+    public class VisitCounterService : IVisitCounterService
+    {
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        private const string VisitCookieName = "UserVisits";
+        private const int CookieExpiryDays = 365;
+
+        public VisitCounterService(IHttpContextAccessor httpContextAccessor)
+        {
+            _httpContextAccessor = httpContextAccessor;
+        }
+
+        public int GetVisitCount()
+        {
+            var httpContext = _httpContextAccessor.HttpContext;
+            if (httpContext.Request.Cookies.TryGetValue(VisitCookieName, out string visitCountStr))
+            {
+                return int.TryParse(visitCountStr, out int count) ? count : 0;
+            }
+            return 0;
+        }
+
+        public void IncrementVisitCount()
+        {
+            var httpContext = _httpContextAccessor.HttpContext;
+            var currentCount = GetVisitCount();
+            var newCount = currentCount + 1;
+
+            var cookieOptions = new CookieOptions
+            {
+                Expires = DateTime.Now.AddDays(CookieExpiryDays),
+                HttpOnly = true,
+                IsEssential = true,
+                Secure = true
+            };
+
+            httpContext.Response.Cookies.Append(VisitCookieName, newCount.ToString(), cookieOptions);
+        }
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Services\CartService.cs
+using CoffeeShop.Models;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+
+namespace CoffeeShop.Services
+{
+    public class CartService : ICartService
+    {
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly ILogger<CartService> _logger;
+        private const string CartSessionKey = "ShoppingCart";
+
+        public CartService(IHttpContextAccessor httpContextAccessor, ILogger<CartService> logger)
+        {
+            _httpContextAccessor = httpContextAccessor;
+            _logger = logger;
+        }
+
+        private ISession Session 
+        { 
+            get 
+            {
+                var session = _httpContextAccessor.HttpContext?.Session;
+                if (session == null)
+                {
+                    _logger.LogError("Сессия не доступна!");
+                    throw new InvalidOperationException("Session is not available");
+                }
+                return session;
+            }
+        }
+
+        public void AddToCart(CoffeeProduct product, int quantity = 1)
+        {
+            try
+            {
+                _logger.LogInformation("Начало добавления в корзину: ProductId={ProductId}, Name={ProductName}", 
+                    product.Id, product.Name);
+
+                var cart = GetCartItems();
+                _logger.LogInformation("Текущая корзина: {Count} items", cart.Count);
+
+                if (cart.ContainsKey(product.Id))
+                {
+                    cart[product.Id].Quantity += quantity;
+                    _logger.LogInformation("Увеличено количество товара {ProductId} до {Quantity}", 
+                        product.Id, cart[product.Id].Quantity);
+                }
+                else
+                {
+                    cart[product.Id] = new CartItem
+                    {
+                        ProductId = product.Id,
+                        ProductName = product.Name,
+                        Price = product.Price,
+                        Quantity = quantity,
+                        ImageUrl = product.ImageUrl
+                    };
+                    _logger.LogInformation("Добавлен новый товар в корзину: {ProductName}", product.Name);
+                }
+                
+                SaveCart(cart);
+                _logger.LogInformation("Корзина успешно сохранена");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка в AddToCart для товара {ProductId}", product.Id);
+                throw;
+            }
+        }
+
+        public void RemoveFromCart(int productId)
+        {
+            try
+            {
+                _logger.LogInformation("Удаление товара из корзины: ProductId={ProductId}", productId);
+                var cart = GetCartItems();
+                cart.Remove(productId);
+                SaveCart(cart);
+                _logger.LogInformation("Товар удален из корзины");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при удалении товара {ProductId} из корзины", productId);
+                throw;
+            }
+        }
+
+        public void ClearCart()
+        {
+            try
+            {
+                Session.Remove(CartSessionKey);
+                _logger.LogInformation("Корзина очищена");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при очистке корзины");
+                throw;
+            }
+        }
+
+        public Dictionary<int, CartItem> GetCartItems()
+        {
+            try
+            {
+                var cartJson = Session.GetString(CartSessionKey);
+                if (string.IsNullOrEmpty(cartJson))
+                {
+                    _logger.LogInformation("Корзина пуста");
+                    return new Dictionary<int, CartItem>();
+                }
+
+                var cart = JsonSerializer.Deserialize<Dictionary<int, CartItem>>(cartJson) 
+                    ?? new Dictionary<int, CartItem>();
+                
+                _logger.LogInformation("Загружена корзина с {Count} товарами", cart.Count);
+                return cart;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при загрузке корзины");
+                return new Dictionary<int, CartItem>();
+            }
+        }
+
+        public int GetCartItemsCount()
+        {
+            var count = GetCartItems().Values.Sum(item => item.Quantity);
+            _logger.LogDebug("Количество товаров в корзине: {Count}", count);
+            return count;
+        }
+
+        public decimal GetCartTotal()
+        {
+            var total = GetCartItems().Values.Sum(item => item.Price * item.Quantity);
+            _logger.LogDebug("Сумма корзины: {Total}", total);
+            return total;
+        }
+
+        private void SaveCart(Dictionary<int, CartItem> cart)
+        {
+            try
+            {
+                var cartJson = JsonSerializer.Serialize(cart);
+                Session.SetString(CartSessionKey, cartJson);
+                _logger.LogDebug("Корзина сохранена в сессию");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при сохранении корзины");
+                throw;
+            }
+        }
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Services\CoffeeService.cs
+using CoffeeShop.Models;
+
+namespace CoffeeShop.Services
+{
+    public class CoffeeService : ICoffeeService
+    {
+        private readonly IDatabaseService _databaseService;
+
+        public CoffeeService(IDatabaseService databaseService)
+        {
+            _databaseService = databaseService;
+        }
+
+        public IEnumerable<CoffeeProduct> GetAllProducts() => _databaseService.GetAllProducts();
+
+        public CoffeeProduct? GetProductById(int id) => _databaseService.GetProductById(id);
+
+        public IEnumerable<CoffeeProduct> GetProductsByCategory(string category) =>
+            _databaseService.GetProductsByCategory(category);
+
+        public IEnumerable<string> GetCategories() => _databaseService.GetCategories();
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Services\DatabaseService.cs
+using Microsoft.Data.Sqlite;
+using Dapper;
+using CoffeeShop.Models;
+
+namespace CoffeeShop.Services
+{
+    public class DatabaseService : IDatabaseService
+    {
+        private readonly string _connectionString;
+
+        public DatabaseService(IConfiguration configuration)
+        {
+            var dbPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "CoffeeShop.db");
+            _connectionString = $"Data Source={dbPath}";
+        }
+
+        public IEnumerable<CoffeeProduct> GetAllProducts()
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+            return connection.Query<CoffeeProduct>("SELECT * FROM CoffeeProducts");
+        }
+
+        public CoffeeProduct? GetProductById(int id)
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+            return connection.QueryFirstOrDefault<CoffeeProduct>(
+                "SELECT * FROM CoffeeProducts WHERE Id = @Id", new { Id = id });
+        }
+
+        public IEnumerable<CoffeeProduct> GetProductsByCategory(string category)
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+            return connection.Query<CoffeeProduct>(
+                "SELECT * FROM CoffeeProducts WHERE Category = @Category", 
+                new { Category = category });
+        }
+
+        public IEnumerable<string> GetCategories()
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+            return connection.Query<string>("SELECT DISTINCT Category FROM CoffeeProducts");
+        }
+    }
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Views\Shared\Error.cshtml
+@model ErrorViewModel
+@{
+    ViewData["Title"] = "Error";
+}
+
+<h1 class="text-danger">Error.</h1>
+<h2 class="text-danger">An error occurred while processing your request.</h2>
+
+@if (Model.ShowRequestId)
+{
+    <p>
+        <strong>Request ID:</strong> <code>@Model.RequestId</code>
+    </p>
+}
+
+<h3>Development Mode</h3>
+<p>
+    Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
+</p>
+<p>
+    <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
+    It can result in displaying sensitive information from exceptions to end users.
+    For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
+    and restarting the app.
+</p>
+
+File: C:\Users\MrAge\Desktop\CoffeeShop\Views\Shared\_Layout.cshtml
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - @(ViewData["StoreName"] ?? "Кофейня")</title>
+    
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    
+    @await RenderSectionAsync("Styles", required: false)
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-dark border-bottom box-shadow mb-3">
+            <div class="container">
+                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">
+                    <i class="fas fa-coffee"></i> @(ViewData["StoreName"] ?? "Кофейня")
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="Home" asp-action="Index">Главная</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="Catalog" asp-action="Index">Каталог</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="Home" asp-action="About">О нас</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="Home" asp-action="Privacy">Конфиденциальность</a>
+                        </li>
+                    </ul>
+                    <ul class="navbar-nav">
+                        <li class="nav-item">
+                            <a class="nav-link" href="/Cart" id="cart-link">
+                                <i class="fas fa-shopping-cart"></i> Корзина
+                                <span id="cart-counter" class="badge bg-secondary">0</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            &copy; 2024 - @(ViewData["StoreName"] ?? "Кофейня") - 
+            Посещений: @ViewData["VisitCount"] - 
+            <a asp-controller="Home" asp-action="Privacy">Конфиденциальность</a>
+        </div>
+    </footer>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="https://kit.fontawesome.com/your-fontawesome-kit.js" crossorigin="anonymous"></script>
+    
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
+File: C:\Users\MrAge\Desktop\CoffeeShop\Views\Shared\_Layout.cshtml.css
+/* Please see documentation at https://learn.microsoft.com/aspnet/core/client-side/bundling-and-minification
+for details on configuring this project to bundle and minify static web assets. */
+
+a.navbar-brand {
+  white-space: normal;
+  text-align: center;
+  word-break: break-all;
+}
+
+a {
+  color: #0077cc;
+}
+
+.btn-primary {
+  color: #fff;
+  background-color: #1b6ec2;
+  border-color: #1861ac;
+}
+
+.nav-pills .nav-link.active, .nav-pills .show > .nav-link {
+  color: #fff;
+  background-color: #1b6ec2;
+  border-color: #1861ac;
+}
+
+.border-top {
+  border-top: 1px solid #e5e5e5;
+}
+.border-bottom {
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.box-shadow {
+  box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .05);
+}
+
+button.accept-policy {
+  font-size: 1rem;
+  line-height: inherit;
+}
+
+.footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  white-space: nowrap;
+  line-height: 60px;
+}
+
+File: C:\Users\MrAge\Desktop\CoffeeShop\Views\Shared\_ValidationScriptsPartial.cshtml
+<script src="~/lib/jquery-validation/dist/jquery.validate.min.js"></script>
+<script src="~/lib/jquery-validation-unobtrusive/jquery.validate.unobtrusive.min.js"></script>
+
+File: C:\Users\MrAge\Desktop\CoffeeShop\Views\_ViewImports.cshtml
+@using CoffeeShop
+@using CoffeeShop.Models
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+
+File: C:\Users\MrAge\Desktop\CoffeeShop\Views\_ViewStart.cshtml
+@{
+    Layout = "_Layout";
+}
+
+File: C:\Users\MrAge\Desktop\CoffeeShop\Views\Cart\Index.cshtml
+@model IEnumerable<CartItem>
+@{
+    ViewData["Title"] = "Корзина покупок";
+}
+
+<div class="container mt-4">
+    <h2>Ваша корзина</h2>
+
+    @if (!Model.Any())
+    {
+        <div class="alert alert-info">
+            Ваша корзина пуста. <a href="/catalog">Перейти к покупкам</a>
+        </div>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Товар</th>
+                    <th>Цена</th>
+                    <th>Количество</th>
+                    <th>Сумма</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model)
+                {
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <img src="@item.ImageUrl" alt="@item.ProductName" style="width: 50px; height: 50px; object-fit: cover;" onerror="this.src='/images/coffee-placeholder.jpg'">
+                                <span class="ms-2">@item.ProductName</span>
+                            </div>
+                        </td>
+                        <td>@item.Price.ToString("C")</td>
+                        <td>@item.Quantity</td>
+                        <td>@((item.Price * item.Quantity).ToString("C"))</td>
+                        <td>
+                            <button class="btn btn-danger btn-sm" onclick="removeFromCart(@item.ProductId)">Удалить</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3"><strong>Итого:</strong></td>
+                    <td><strong>@ViewBag.CartTotal.ToString("C")</strong></td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div class="d-flex justify-content-between">
+            <a href="/catalog" class="btn btn-secondary">Продолжить покупки</a>
+            <form asp-action="ClearCart" method="post">
+                <button type="submit" class="btn btn-warning">Очистить корзину</button>
+            </form>
+            <button class="btn btn-success">Оформить заказ</button>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        function removeFromCart(productId) {
+            fetch('/Cart/RemoveFromCart', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ productId: productId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                }
+            });
+        }
+    </script>
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Views\Catalog\Details.cshtml
+@model CoffeeProduct
+@{
+    ViewData["Title"] = Model.Name;
+}
+
+<div class="row">
+    <div class="col-md-6">
+        <img src="@Model.ImageUrl" class="img-fluid rounded" alt="@Model.Name"
+             onerror="this.src='/images/coffee-placeholder.jpg'">
+    </div>
+    <div class="col-md-6">
+        <h1>@Model.Name</h1>
+        <p class="lead">@Model.Description</p>
+        
+        <div class="mb-3">
+            <span class="badge bg-primary">@Model.Category</span>
+            <span class="badge bg-secondary">@Model.Origin</span>
+            <span class="badge bg-info">@Model.RoastLevel обжарка</span>
+        </div>
+        
+        <div class="mb-3">
+            <h3 class="text-primary">@Model.Price.ToString("C")</h3>
+            <p class="text-muted">В наличии: @Model.Stock шт.</p>
+        </div>
+        
+        <div class="d-grid gap-2 d-md-flex">
+            <button class="btn btn-primary btn-lg" 
+                    onclick="addToCart(@Model.Id, '@Model.Name')">
+                <i class="fas fa-cart-plus"></i> Добавить в корзину
+            </button>
+            <a href="/catalog" class="btn btn-outline-secondary btn-lg">Назад к каталогу</a>
+        </div>
+    </div>
+</div>
+File: C:\Users\MrAge\Desktop\CoffeeShop\Views\Catalog\Index.cshtml
+@model IEnumerable<CoffeeProduct>
+@{
+    ViewData["Title"] = "Каталог кофе";
+}
+
+<div class="row">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-header">
+                <h5>Категории</h5>
+            </div>
+            <div class="list-group list-group-flush" id="categories-container">
+                <a href="/catalog" class="list-group-item list-group-item-action active">Все товары</a>
+                @foreach (var category in ViewBag.Categories ?? new List<string>())
+                {
+                    <a href="/catalog/category/@category" class="list-group-item list-group-item-action">@category</a>
+                }
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-9">
+        <h2>Наш каталог кофе</h2>
+        
+        <div class="row">
+            @foreach (var product in Model)
+            {
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="card coffee-card h-100">
+                        <img src="@product.ImageUrl" class="card-img-top coffee-image" alt="@product.Name" 
+                             onerror="this.src='/images/coffee-placeholder.jpg'">
+                        <div class="card-body">
+                            <h5 class="card-title">@product.Name</h5>
+                            <span class="badge origin-badge">@product.Origin</span>
+                            <p class="card-text">@product.Description</p>
+                            <p class="card-text">
+                                <small class="text-muted">Обжарка: @product.RoastLevel</small>
+                            </p>
+                        </div>
+                        <div class="card-footer">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="price">@product.Price.ToString("C")</span>
+                                <button class="btn btn-primary btn-sm" 
+                                        onclick="addToCart(@product.Id, '@product.Name')">
+                                    <i class="fas fa-cart-plus"></i> В корзину
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Загрузка категорий через API
+        $(document).ready(function() {
+            loadCategories();
+        });
+    </script>
+}
+File: C:\Users\MrAge\Desktop\CoffeeShop\Views\Home\Index.cshtml
+@{
+    ViewData["Title"] = "Главная";
+}
+
+<div class="text-center">
+    <h1 class="display-4">Добро пожаловать в @ViewData["StoreName"]!</h1>
+    <p class="lead">Откройте для себя мир премиального кофе</p>
+    
+    <div class="row mt-5">
+        <div class="col-md-4">
+            <div class="card coffee-card">
+                <img src="/images/coffee-beans.jpg" class="card-img-top" alt="Зерновой кофе">
+                <div class="card-body">
+                    <h5 class="card-title">Зерновой кофе</h5>
+                    <p class="card-text">Свежеобжаренные кофейные зерна из лучших регионов мира.</p>
+                    <a href="/catalog/category/Зерновой" class="btn btn-primary">Смотреть каталог</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card coffee-card">
+                <img src="/images/ground-coffee.jpg" class="card-img-top" alt="Молотый кофе">
+                <div class="card-body">
+                    <h5 class="card-title">Молотый кофе</h5>
+                    <p class="card-text">Идеально помолотый кофе для различных способов заваривания.</p>
+                    <a href="/catalog/category/Молотый" class="btn btn-primary">Смотреть каталог</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card coffee-card">
+                <img src="/images/coffee-accessories.jpg" class="card-img-top" alt="Аксессуары">
+                <div class="card-body">
+                    <h5 class="card-title">Аксессуары</h5>
+                    <p class="card-text">Все необходимое для идеального кофе: от турок до кофемашин.</p>
+                    <a href="/catalog" class="btn btn-primary">Смотреть каталог</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+File: C:\Users\MrAge\Desktop\CoffeeShop\Views\Home\Privacy.cshtml
+@{
+    ViewData["Title"] = "Privacy Policy";
+}
+<h1>@ViewData["Title"]</h1>
+
+<p>Use this page to detail your site's privacy policy.</p>
+
+File: C:\Users\MrAge\Desktop\CoffeeShop\wwwroot\js\site.js
+// Функция для асинхронного добавления в корзину
+async function addToCart(productId, productName) {
+    try {
+        const response = await fetch('/Cart/AddToCart', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                productId: productId,
+                quantity: 1
+            })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            showNotification(result.message, 'success');
+            updateCartCounter(result.cartCount);
+        } else {
+            showNotification('Ошибка при добавлении товара в корзину', 'error');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('Ошибка сети', 'error');
+    }
+}
+
+// Показ уведомлений
+function showNotification(message, type) {
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show`;
+    notification.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.getElementById('notification-container') || createNotificationContainer();
+    container.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.remove();
+    }, 3000);
+}
+
+function createNotificationContainer() {
+    const container = document.createElement('div');
+    container.id = 'notification-container';
+    container.style.position = 'fixed';
+    container.style.top = '20px';
+    container.style.right = '20px';
+    container.style.zIndex = '9999';
+    container.style.minWidth = '300px';
+    document.body.appendChild(container);
+    return container;
+}
+
+// Обновление счетчика корзины
+async function updateCartCounter() {
+    try {
+        const response = await fetch('/Cart/GetCartInfo');
+        if (response.ok) {
+            const cartInfo = await response.json();
+            const counter = document.getElementById('cart-counter');
+            if (counter) {
+                counter.textContent = cartInfo.count;
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching cart info:', error);
+    }
+}
+
+// Загрузка категорий через API
+async function loadCategories() {
+    try {
+        const response = await fetch('/catalog/api/categories');
+        const categories = await response.json();
+        
+        const container = document.getElementById('categories-container');
+        if (container) {
+            container.innerHTML = categories.map(category => 
+                `<a href="/catalog/category/${category}" class="list-group-item list-group-item-action">${category}</a>`
+            ).join('');
+        }
+    } catch (error) {
+        console.error('Error loading categories:', error);
+    }
+}
+
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    updateCartCounter();
+    loadCategories();
+});
+File: C:\Users\MrAge\Desktop\CoffeeShop\wwwroot\css\site.css
+:root {
+    --primary-color: #8B4513;
+    --secondary-color: #D2691E;
+    --accent-color: #A0522D;
+    --light-color: #F5F5DC;
+    --dark-color: #3E2723;
+}
+
+body {
+    background-color: var(--light-color);
+    color: var(--dark-color);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.navbar {
+    background-color: var(--primary-color) !important;
+}
+
+.navbar-brand {
+    font-weight: bold;
+    color: var(--light-color) !important;
+}
+
+.btn-primary {
+    background-color: var(--secondary-color);
+    border-color: var(--accent-color);
+}
+
+.btn-primary:hover {
+    background-color: var(--accent-color);
+    border-color: var(--primary-color);
+}
+
+.coffee-card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    transition: transform 0.3s ease;
+    margin-bottom: 20px;
+}
+
+.coffee-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.coffee-image {
+    height: 200px;
+    object-fit: cover;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.price {
+    color: var(--primary-color);
+    font-weight: bold;
+    font-size: 1.2em;
+}
+
+.origin-badge {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.footer {
+    background-color: var(--dark-color);
+    color: var(--light-color);
+    margin-top: 50px;
+}
